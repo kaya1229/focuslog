@@ -1,88 +1,130 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <style>
         body {
             margin: 0; padding: 0;
-            background: rgba(20, 20, 20, 0.8); /* 약간 투명한 검정 */
+            background: rgba(10, 15, 20, 0.9);
             color: #00f2ff;
-            font-family: 'Courier New', Courier, monospace;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex; flex-direction: column;
             align-items: center; justify-content: center;
             height: 100vh;
-            border: 2px solid #00f2ff;
-            box-shadow: inset 0 0 20px #00f2ff;
+            border: 1px solid rgba(0, 242, 255, 0.3);
             overflow: hidden;
+            text-align: center;
         }
 
-        /* 빔프로젝터 빛 효과 */
-        .beam-effect {
-            position: absolute; top: -50%; left: 0; width: 100%; height: 100%;
-            background: radial-gradient(circle, rgba(0,242,255,0.1) 0%, transparent 70%);
-            pointer-events: none;
+        /* 빔프로젝터 효과 */
+        .beam-light {
+            position: absolute; top: -100px; width: 200%; height: 200px;
+            background: radial-gradient(ellipse at center, rgba(0,242,255,0.15) 0%, transparent 80%);
+            pointer-events: none; transform: rotate(-5deg);
         }
 
-        #timer {
-            font-size: 80px;
-            font-weight: bold;
-            text-shadow: 0 0 10px #00f2ff, 0 0 20px #00f2ff;
-            margin-bottom: 20px;
+        #status { font-size: 12px; letter-spacing: 3px; margin-bottom: 10px; opacity: 0.8; }
+        #timer { font-size: 70px; font-weight: 200; margin: 20px 0; text-shadow: 0 0 15px #00f2ff; }
+
+        .setup-box {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px; border-radius: 8px;
+            border: 1px dashed rgba(0, 242, 255, 0.5);
         }
 
-        #status { font-size: 14px; letter-spacing: 2px; margin-bottom: 30px; }
+        input {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid #00f2ff;
+            color: #fff; padding: 10px; width: 200px;
+            margin-bottom: 15px; outline: none; text-align: center;
+        }
 
         button {
-            background: transparent;
-            border: 1px solid #00f2ff;
-            color: #00f2ff;
-            padding: 10px 25px;
-            font-family: inherit;
-            cursor: pointer;
-            transition: 0.3s;
+            background: #00f2ff; border: none; color: #000;
+            padding: 10px 20px; font-weight: bold; cursor: pointer;
+            transition: 0.2s; letter-spacing: 1px;
         }
 
-        button:hover { background: #00f2ff; color: #000; }
+        button:hover { background: #fff; box-shadow: 0 0 15px #00f2ff; }
 
-        /* 리셋 시 지지직거리는 애니메이션 */
-        .glitch { animation: glitch 0.2s infinite; color: #ff0055 !important; }
+        .glitch-text { animation: glitch 0.3s infinite; color: #ff3e3e !important; }
         @keyframes glitch {
-            0% { transform: translate(2px, 0); }
-            50% { transform: translate(-2px, 0); }
+            0% { transform: translate(1px, 1px); }
+            50% { transform: translate(-1px, -1px); }
             100% { transform: translate(0, 0); }
         }
+
+        #restartBtn { display: none; background: transparent; color: #00f2ff; border: 1px solid #00f2ff; margin-top: 10px; }
     </style>
 </head>
 <body>
-    <div class="beam-effect"></div>
-    <div id="status">PROJECTOR STANDBY</div>
-    <div id="timer">00:00</div>
-    <button id="startBtn">START BEAM</button>
+    <div class="beam-light"></div>
+    <div id="status">OSD: STANDBY</div>
+
+    <div id="setupSection" class="setup-box">
+        <div style="font-size: 10px; margin-bottom: 10px;">TARGET APPS (e.g. Code, Chrome)</div>
+        <input type="text" id="appInput" placeholder="콤마(,)로 구분 입력">
+        <br>
+        <button id="saveBtn">CONFIRM SETTINGS</button>
+    </div>
+
+    <div id="timerSection" style="display: none;">
+        <div id="timer">00:00</div>
+        <button id="startBtn">START PROJECTION</button>
+        <button id="restartBtn">RE-CONFIG</button>
+    </div>
 
     <script>
         const { ipcRenderer } = require('electron');
-        const timerEl = document.getElementById('timer');
+        
+        const setupSection = document.getElementById('setupSection');
+        const timerSection = document.getElementById('timerSection');
+        const appInput = document.getElementById('appInput');
         const statusEl = document.getElementById('status');
+        const timerEl = document.getElementById('timer');
         const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
 
+        // 앱 설정 저장
+        document.getElementById('saveBtn').onclick = () => {
+            const val = appInput.value;
+            if(!val) return alert("최소 하나 이상의 앱 이름을 입력하세요.");
+            
+            ipcRenderer.send('set-allowed-apps', val);
+            setupSection.style.display = 'none';
+            timerSection.style.display = 'block';
+            statusEl.innerText = "OSD: READY";
+        };
+
+        // 시작 버튼
         startBtn.onclick = () => {
             ipcRenderer.send('start-session');
-            statusEl.innerText = "SCREENING NOW...";
+            statusEl.innerText = "OSD: PROJECTION ON";
             startBtn.style.display = 'none';
+            restartBtn.style.display = 'none';
+            timerEl.classList.remove('glitch-text');
+        };
+
+        // 재설정 버튼
+        restartBtn.onclick = () => {
+            timerSection.style.display = 'none';
+            setupSection.style.display = 'block';
+            statusEl.innerText = "OSD: CONFIG";
         };
 
         ipcRenderer.on('update-timer', (event, seconds) => {
             const m = String(Math.floor(seconds / 60)).padStart(2, '0');
             const s = String(seconds % 60).padStart(2, '0');
             timerEl.innerText = `${m}:${s}`;
-            timerEl.classList.remove('glitch');
         });
 
         ipcRenderer.on('reset-timer', (event, appName) => {
-            timerEl.innerText = "SIGNAL LOST";
-            timerEl.classList.add('glitch');
-            statusEl.innerText = `INTERRUPTED BY: ${appName}`;
-            startBtn.style.display = 'block';
-            startBtn.innerText = "RESTART BEAM";
+            timerEl.innerText = "LOST";
+            timerEl.classList.add('glitch-text');
+            statusEl.innerText = `SIGNAL INTERRUPTED: ${appName}`;
+            startBtn.style.display = 'inline-block';
+            startBtn.innerText = "RESUME";
+            restartBtn.style.display = 'inline-block';
         });
     </script>
 </body>
