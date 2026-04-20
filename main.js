@@ -9,21 +9,22 @@ let focusTimer = 0;
 let isTracking = false;
 let monitorInterval;
 let ALLOWED_APPS = [];
-let currentSessionClips = []; // 현재 세션에서 생성된 영상 파일 경로들
+let currentSessionClips = [];
 
+// 저장 경로 설정
 const videoDir = path.join(app.getPath('userData'), 'study_vlogs');
-if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir);
+if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 700, height: 600,
+    width: 800, height: 600,
     frame: false, transparent: true, alwaysOnTop: true,
     webPreferences: { nodeIntegration: true, contextIsolation: false }
   });
   mainWindow.loadFile('index.html');
 }
 
-// 1. 자막 입히기 및 조각 저장
+// 영상 처리 (자막 입히기)
 ipcMain.on('process-clip', (event, { tempPath, date, targetTime, phase }) => {
   const fileName = `clip_${phase}_${Date.now()}.mp4`;
   const outputPath = path.join(videoDir, fileName);
@@ -43,57 +44,55 @@ ipcMain.on('process-clip', (event, { tempPath, date, targetTime, phase }) => {
     .on('end', () => {
       currentSessionClips.push(outputPath);
       if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-      console.log(`조각 생성 완료: ${phase}`);
     })
+    .on('error', (err) => console.error('FFmpeg Clip Error:', err))
     .run();
 });
 
-// 2. 최종 병합 (브이로그 완성)
+// 최종 병합
 ipcMain.on('merge-vlogs', () => {
-  if (currentSessionClips.length < 2) return;
-
+  if (currentSessionClips.length === 0) return;
   const finalPath = path.join(videoDir, `VLOG_${Date.now()}.mp4`);
   let mergeCommand = ffmpeg();
-
-  currentSessionClips.forEach(clip => { mergeCommand = mergeCommand.input(clip); });
+  currentSessionClips.forEach(clip => { if(fs.existsSync(clip)) mergeCommand.input(clip); });
 
   mergeCommand
-    .on('end', () => {
-      console.log('최종 브이로그 완성:', finalPath);
-      currentSessionClips = []; // 리스트 초기화
+    .on('end', () => { 
+        console.log('Vlog Completed:', finalPath);
+        currentSessionClips = [];
     })
+    .on('error', (err) => console.error('Merge Error:', err))
     .mergeToFile(finalPath, app.getPath('temp'));
 });
 
-// 기존 감시 로직
-ipcMain.on('set-allowed-apps', (event, appList) => {
+ipcMain.on('set-config', (event, appList) => {
   ALLOWED_APPS = appList.split(',').map(app => app.trim()).filter(app => app !== "");
 });
 
 ipcMain.on('start-session', () => {
   isTracking = true;
   focusTimer = 0;
-  currentSessionClips = []; 
-  if (!monitorInterval) {
-    monitorInterval = setInterval(async () => {
-      if (!isTracking) return;
-      const currentApp = await activeWin();
-      if (currentApp) {
-        const isAllowed = ALLOWED_APPS.some(app => 
-          currentApp.owner.name.toLowerCase().includes(app.toLowerCase()) ||
-          currentApp.title.toLowerCase().includes(app.toLowerCase())
-        );
-        if (isAllowed) {
-          focusTimer++;
-          mainWindow.webContents.send('update-timer', focusTimer);
-        } else if (focusTimer > 0) {
-          isTracking = false;
-          mainWindow.webContents.send('reset-timer', currentApp.owner.name);
-          focusTimer = 0;
-        }
+  currentSessionClips = [];
+  if (monitorInterval) clearInterval(monitorInterval);
+  
+  monitorInterval = setInterval(async () => {
+    if (!isTracking) return;
+    const currentApp = await activeWin();
+    if (currentApp) {
+      const isAllowed = ALLOWED_APPS.some(app => 
+        currentApp.owner.name.toLowerCase().includes(app.toLowerCase()) ||
+        currentApp.title.toLowerCase().includes(app.toLowerCase())
+      );
+      if (isAllowed) {
+        focusTimer++;
+        mainWindow.webContents.send('update-timer', focusTimer);
+      } else if (focusTimer > 0) {
+        isTracking = false;
+        mainWindow.webContents.send('reset-timer', currentApp.owner.name);
+        focusTimer = 0;
       }
-    }, 1000);
-  }
+    }
+  }, 1000);
 });
 
 app.whenReady().then(createWindow);
