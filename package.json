@@ -1,0 +1,12 @@
+{
+  "name": "projector-focus",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "active-win": "^8.2.0",
+    "electron": "^28.0.0"
+  }
+}
