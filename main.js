@@ -6,17 +6,15 @@ let mainWindow;
 let focusTimer = 0;
 let isTracking = false;
 let monitorInterval;
-
-// 감시할 앱 리스트 (프로세스 이름 기준)
-const ALLOWED_APPS = ["Code", "Notion", "Obsidian", "chrome"]; 
+let ALLOWED_APPS = [];
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 450,
-    height: 350,
-    frame: false,          // 빔프로젝터 컨셉을 위해 상단바 제거
-    transparent: true,     // 배경 투명 설정
-    alwaysOnTop: true,     // 집중을 위해 항상 위에 기록
+    width: 500,
+    height: 400,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -26,40 +24,47 @@ function createWindow() {
   mainWindow.loadFile('index.html');
 }
 
-// 1초마다 실행되는 감시 함수
+// 창 감시 핵심 로직
 async function startMonitoring() {
+  if (monitorInterval) clearInterval(monitorInterval);
+  
   monitorInterval = setInterval(async () => {
     if (!isTracking) return;
 
     const currentApp = await activeWin();
     
     if (currentApp) {
-      // 허용된 앱 중 하나라도 포함되어 있는지 확인
+      // 사용자가 입력한 리스트 중 하나라도 프로세스 이름이나 창 제목에 포함되는지 검사
       const isAllowed = ALLOWED_APPS.some(app => 
-        currentApp.owner.name.toLowerCase().includes(app.toLowerCase())
+        currentApp.owner.name.toLowerCase().includes(app.toLowerCase()) ||
+        currentApp.title.toLowerCase().includes(app.toLowerCase())
       );
 
       if (isAllowed) {
         focusTimer++;
         mainWindow.webContents.send('update-timer', focusTimer);
       } else {
-        // 허용되지 않은 앱 사용 시 리셋
         if (focusTimer > 0) {
+          isTracking = false;
+          const stoppedApp = currentApp.owner.name;
           focusTimer = 0;
-          isTracking = false; // 리셋 시 잠시 멈춤 (사용자 재시작 유도)
-          mainWindow.webContents.send('reset-timer', currentApp.owner.name);
-          console.log(`[경고] ${currentApp.owner.name} 감지됨. 초기화.`);
+          mainWindow.webContents.send('reset-timer', stoppedApp);
         }
       }
     }
   }, 1000);
 }
 
-// IPC 통신: UI에서 시작 버튼 클릭 시
+// IPC 통신 설정
+ipcMain.on('set-allowed-apps', (event, appList) => {
+  ALLOWED_APPS = appList.split(',').map(app => app.trim()).filter(app => app !== "");
+  console.log("새로운 허용 앱 리스트:", ALLOWED_APPS);
+});
+
 ipcMain.on('start-session', () => {
   isTracking = true;
   focusTimer = 0;
-  if (!monitorInterval) startMonitoring();
+  startMonitoring();
 });
 
 app.whenReady().then(createWindow);
