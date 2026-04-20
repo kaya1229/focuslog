@@ -4,47 +4,41 @@
     <meta charset="UTF-8">
     <style>
         body {
-            margin: 0; padding: 0; background: rgba(5, 10, 15, 0.95);
+            margin: 0; padding: 0; background: rgba(5, 10, 15, 0.9);
             color: #00f2ff; font-family: 'Courier New', monospace;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            height: 100vh; border: 1px solid #00f2ff; overflow: hidden;
+            height: 100vh; border: 2px solid #00f2ff; overflow: hidden;
         }
-        #preview {
-            position: absolute; bottom: 20px; right: 20px; width: 160px; height: 120px;
-            border: 1px solid #00f2ff; background: #000; transform: scaleX(-1);
-            box-shadow: 0 0 10px #00f2ff;
-        }
-        .rec-indicator {
-            position: absolute; top: 10px; right: 10px; color: red;
-            font-size: 12px; font-weight: bold; display: none; animation: blink 1s infinite;
-        }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-        #timer { font-size: 80px; text-shadow: 0 0 20px #00f2ff; margin: 10px 0; }
-        .setup-box input {
-            background: none; border: 1px solid #00f2ff; color: #fff;
-            padding: 10px; text-align: center; width: 250px;
-        }
-        button {
-            background: #00f2ff; border: none; color: #000; padding: 12px 24px;
-            font-weight: bold; cursor: pointer; margin-top: 10px;
-        }
-        button:hover { background: #fff; }
+        #preview { position: absolute; bottom: 20px; right: 20px; width: 140px; height: 100px; border: 1px solid #00f2ff; transform: scaleX(-1); }
+        #timer { font-size: 90px; text-shadow: 0 0 20px #00f2ff; }
+        .setup-box input { background: none; border: 1px solid #00f2ff; color: #fff; padding: 10px; margin: 5px; text-align: center; }
+        button { background: #00f2ff; border: none; color: #000; padding: 10px 20px; font-weight: bold; cursor: pointer; margin: 10px; }
+        #fireworks { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none; z-index: 10; }
+        .success-msg { position: fixed; top: 40%; text-align: center; display: none; z-index: 11; }
+        .glitch { animation: glitch 0.2s infinite; color: red; }
+        @keyframes glitch { 0% { transform: translate(2px,0); } 50% { transform: translate(-2px,0); } 100% { transform: translate(0,0); } }
     </style>
 </head>
 <body>
-    <div id="status">BEAM STATUS: IDLE</div>
-    <div id="recInd" class="rec-indicator">● REC</div>
-
+    <canvas id="fireworks"></canvas>
+    <div id="status">OSD: IDLE</div>
+    
     <div id="setupSection" class="setup-box">
-        <p style="font-size: 10px;">ENTER TARGET APPS (e.g. Code, Chrome)</p>
-        <input type="text" id="appInput" placeholder="콤마로 구분">
+        <input type="text" id="appInput" placeholder="허용 앱 (Code, Chrome)">
+        <input type="text" id="quoteInput" placeholder="성공 멘트 (오늘도 해냈다!)">
         <br>
-        <button id="saveBtn">SET CONFIG</button>
+        <button id="saveBtn">CONFIRM CONFIG</button>
     </div>
 
     <div id="timerSection" style="display: none;">
         <div id="timer">00:00</div>
-        <button id="startBtn">START PROJECTION</button>
+        <button id="startBtn">START PROJECTOR</button>
+    </div>
+
+    <div id="successOverlay" class="success-msg">
+        <h1 id="finalQuote" style="font-size: 50px;"></h1>
+        <p>STUDY VLOG GENERATED</p>
+        <button onclick="location.reload()">NEW SESSION</button>
     </div>
 
     <video id="preview" autoplay muted></video>
@@ -54,78 +48,91 @@
         const fs = require('fs');
         const path = require('path');
 
-        let mediaRecorder;
-        let recordedChunks = [];
-        let targetTime = "00:00";
-        let hasCapturedMid = false;
+        let targetSec = 30; // 테스트를 위해 30초 성공으로 설정
+        let hasMidCaptured = false;
 
-        // 웹캠 초기화
-        navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
-            document.getElementById('preview').srcObject = stream;
-        });
+        navigator.mediaDevices.getUserMedia({ video: true }).then(s => { document.getElementById('preview').srcObject = s; });
 
-        async function captureClip(phase) {
+        async function capture(phase) {
             const stream = document.getElementById('preview').srcObject;
-            mediaRecorder = new MediaRecorder(stream);
-            recordedChunks = [];
-            
-            document.getElementById('recInd').style.display = 'block';
-
-            mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
-            mediaRecorder.onstop = async () => {
-                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            const recorder = new MediaRecorder(stream);
+            let chunks = [];
+            recorder.ondataavailable = e => chunks.push(e.data);
+            recorder.onstop = async () => {
+                const blob = new Blob(chunks, { type: 'video/webm' });
                 const buffer = Buffer.from(await blob.arrayBuffer());
-                const tempPath = path.join(__dirname, `temp_${phase}.webm`);
-                
-                fs.writeFileSync(tempPath, buffer);
-                ipcRenderer.send('process-clip', {
-                    tempPath, 
-                    date: new Date().toLocaleDateString(),
-                    targetTime: targetTime,
-                    phase: phase
-                });
-                document.getElementById('recInd').style.display = 'none';
+                const tPath = path.join(__dirname, `temp_${phase}.webm`);
+                fs.writeFileSync(tPath, buffer);
+                ipcRenderer.send('process-clip', { tempPath: tPath, date: new Date().toLocaleDateString(), targetTime: `${targetSec}s`, phase });
             };
-
-            mediaRecorder.start();
-            setTimeout(() => mediaRecorder.stop(), 3000);
+            recorder.start();
+            setTimeout(() => recorder.stop(), 3000);
         }
 
         document.getElementById('saveBtn').onclick = () => {
-            const val = document.getElementById('appInput').value;
-            if(!val) return;
-            ipcRenderer.send('set-allowed-apps', val);
+            ipcRenderer.send('set-allowed-apps', document.getElementById('appInput').value);
             document.getElementById('setupSection').style.display = 'none';
             document.getElementById('timerSection').style.display = 'block';
-            targetTime = "Configured"; 
         };
 
         document.getElementById('startBtn').onclick = () => {
             ipcRenderer.send('start-session');
-            document.getElementById('status').innerText = "BEAM STATUS: RUNNING";
             document.getElementById('startBtn').style.display = 'none';
-            hasCapturedMid = false;
-            captureClip('START');
+            capture('START');
         };
 
-        ipcRenderer.on('update-timer', (event, seconds) => {
-            const m = String(Math.floor(seconds / 60)).padStart(2, '0');
-            const s = String(seconds % 60).padStart(2, '0');
-            const display = `${m}:${s}`;
-            document.getElementById('timer').innerText = display;
+        ipcRenderer.on('update-timer', (event, sec) => {
+            const m = String(Math.floor(sec/60)).padStart(2,'0');
+            const s = String(sec%60).padStart(2,'0');
+            document.getElementById('timer').innerText = `${m}:${s}`;
+            
+            if (sec === Math.floor(targetSec/2) && !hasMidCaptured) {
+                hasMidCaptured = true;
+                capture('FOCUSING');
+            }
 
-            // 중간 지점 촬영 (예: 10초 지점 테스트용, 나중엔 목표 시간의 50%)
-            if (seconds === 10 && !hasCapturedMid) {
-                hasCapturedMid = true;
-                captureClip('FOCUSING');
+            if (sec >= targetSec) {
+                ipcRenderer.send('stop-tracking'); // 감시 중단 요청 (필요 시)
+                showSuccess();
             }
         });
 
-        ipcRenderer.on('reset-timer', (event, appName) => {
-            document.getElementById('timer').innerText = "SIGNAL LOST";
-            document.getElementById('status').innerText = `BLOCKED BY: ${appName}`;
+        function showSuccess() {
+            capture('FINISH');
+            setTimeout(() => ipcRenderer.send('merge-vlogs'), 4000); // 마지막 녹화 대기 후 병합
+            document.getElementById('timerSection').style.display = 'none';
+            document.getElementById('successOverlay').style.display = 'block';
+            document.getElementById('finalQuote').innerText = document.getElementById('quoteInput').value || "GOAL!!";
+            startFireworks();
+        }
+
+        // 간단한 폭죽 효과
+        function startFireworks() {
+            const cvs = document.getElementById('fireworks');
+            const ctx = cvs.getContext('2d');
+            cvs.style.display = 'block';
+            cvs.width = window.innerWidth; cvs.height = window.innerHeight;
+            let parts = Array.from({length: 100}, () => ({
+                x: cvs.width/2, y: cvs.height/2,
+                vx: Math.random()*10-5, vy: Math.random()*10-5,
+                c: `hsl(${Math.random()*360},100%,50%)`
+            }));
+            function draw() {
+                ctx.fillStyle = 'rgba(0,0,0,0.1)'; ctx.fillRect(0,0,cvs.width,cvs.height);
+                parts.forEach(p => {
+                    p.x += p.vx; p.y += p.vy; p.vy += 0.1;
+                    ctx.fillStyle = p.c; ctx.fillRect(p.x, p.y, 4, 4);
+                });
+                requestAnimationFrame(draw);
+            }
+            draw();
+        }
+
+        ipcRenderer.on('reset-timer', (e, name) => {
+            document.getElementById('timer').innerText = "LOST";
+            document.getElementById('timer').classList.add('glitch');
             document.getElementById('startBtn').style.display = 'inline-block';
-            document.getElementById('startBtn').innerText = "RETRY BEAM";
+            document.getElementById('startBtn').innerText = "RE-START BEAM";
         });
     </script>
 </body>
