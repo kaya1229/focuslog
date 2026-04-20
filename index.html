@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0; padding: 0;
+            background: rgba(20, 20, 20, 0.8); /* 약간 투명한 검정 */
+            color: #00f2ff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            height: 100vh;
+            border: 2px solid #00f2ff;
+            box-shadow: inset 0 0 20px #00f2ff;
+            overflow: hidden;
+        }
+
+        /* 빔프로젝터 빛 효과 */
+        .beam-effect {
+            position: absolute; top: -50%; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, rgba(0,242,255,0.1) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        #timer {
+            font-size: 80px;
+            font-weight: bold;
+            text-shadow: 0 0 10px #00f2ff, 0 0 20px #00f2ff;
+            margin-bottom: 20px;
+        }
+
+        #status { font-size: 14px; letter-spacing: 2px; margin-bottom: 30px; }
+
+        button {
+            background: transparent;
+            border: 1px solid #00f2ff;
+            color: #00f2ff;
+            padding: 10px 25px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        button:hover { background: #00f2ff; color: #000; }
+
+        /* 리셋 시 지지직거리는 애니메이션 */
+        .glitch { animation: glitch 0.2s infinite; color: #ff0055 !important; }
+        @keyframes glitch {
+            0% { transform: translate(2px, 0); }
+            50% { transform: translate(-2px, 0); }
+            100% { transform: translate(0, 0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="beam-effect"></div>
+    <div id="status">PROJECTOR STANDBY</div>
+    <div id="timer">00:00</div>
+    <button id="startBtn">START BEAM</button>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        const timerEl = document.getElementById('timer');
+        const statusEl = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+
+        startBtn.onclick = () => {
+            ipcRenderer.send('start-session');
+            statusEl.innerText = "SCREENING NOW...";
+            startBtn.style.display = 'none';
+        };
+
+        ipcRenderer.on('update-timer', (event, seconds) => {
+            const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+            const s = String(seconds % 60).padStart(2, '0');
+            timerEl.innerText = `${m}:${s}`;
+            timerEl.classList.remove('glitch');
+        });
+
+        ipcRenderer.on('reset-timer', (event, appName) => {
+            timerEl.innerText = "SIGNAL LOST";
+            timerEl.classList.add('glitch');
+            statusEl.innerText = `INTERRUPTED BY: ${appName}`;
+            startBtn.style.display = 'block';
+            startBtn.innerText = "RESTART BEAM";
+        });
+    </script>
+</body>
+</html>
